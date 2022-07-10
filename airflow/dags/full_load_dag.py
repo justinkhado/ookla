@@ -1,19 +1,16 @@
 from airflow import DAG
 from airflow.utils.dates import days_ago
 from airflow.operators.python import PythonOperator
-from airflow.operators.bash import BashOperator
+from airflow.providers.google.cloud.transfers.s3_to_gcs import S3ToGCSOperator
 
-import logging
-import geopandas
+import os
 
-OOKLA_S3_URL = 'https://ookla-open-data.s3.amazonaws.com/parquet/performance/type={fixed,mobile}/year=2020/quarter=[1-4]/2020-{01,04,07,10}-01_performance_{fixed,mobile}_tiles.parquet'
-
-def print_geopandas_version():
-    logging.info(geopandas.__version__)
+BUCKET = os.environ.get('GCP_GCS_BUCKET')
 
 default_args = {
     'retries': 1,
-    'start_date': days_ago(1)
+    'start_date': days_ago(1),
+    'schedule_interval': '@once'
 }
 
 with DAG(
@@ -21,14 +18,12 @@ with DAG(
     default_args=default_args
 ) as dag:
 
-    test_task = PythonOperator(
-        task_id='test_task',
-        python_callable=print_geopandas_version
+    s3_to_gcs_op = S3ToGCSOperator(
+        task_id='s3_to_gcs',
+        bucket='ookla-open-data',
+        prefix='parquet/performance/',
+        dest_gcs=f'gs://{BUCKET}/raw/ookla/',
+        replace=True
     )
 
-    download_ookla_data_op = BashOperator(
-        task_id='download_dataset',
-        bash_command=f'curl -sSLf {OOKLA_S3_URL}'
-    )
-
-    test_task >> download_ookla_data_op
+    s3_to_gcs_op
